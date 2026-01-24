@@ -27,7 +27,7 @@ from .superpower_util import load_abilities, get_daily_superpower  # 新增导�
     "steam_status_monitor_V2",
     "Maoer",
     "Steam状态监控插件V2版",
-    "2.1.8",
+    "2.1.9",
     "https://github.com/Maoer233/astrbot_plugin_steam_status_monitor"
 )
 class SteamStatusMonitorV2(Star):
@@ -1058,6 +1058,27 @@ class SteamStatusMonitorV2(Star):
             self.config.save_config()
         yield event.plain_result("已删除所有群聊的所有SteamID，相关状态数据已清空。")
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("steam clear_groupids")
+    async def steam_clear_groupids(self, event: AstrMessageEvent, group_id: str):
+        '''删除指定群聊的所有已监控SteamID，并清空相关状态数据'''
+        if group_id not in self.group_steam_ids:
+            yield event.plain_result(f"群聊 {group_id} 未绑定任何SteamID，无需清理。")
+            return
+        self.group_steam_ids.pop(group_id, None)
+        self._save_group_steam_ids()  # 保存到 steam_groups.json
+        self.group_last_states.pop(group_id, None)
+        self.group_start_play_times.pop(group_id, None)
+        self.group_last_quit_times.pop(group_id, None)
+        self.group_pending_logs.pop(group_id, None)
+        self.group_pending_quit.pop(group_id, None)
+        self.group_recent_games.pop(group_id, None)
+        self._save_persistent_data()
+        self.notify_sessions.pop(group_id, None)
+        if hasattr(self.config, "save_config"):
+            self.config.save_config()
+        yield event.plain_result(f"已删除群聊 {group_id} 的所有SteamID，相关状态数据已清空。")
+
     async def _delayed_quit_check(self, group_id, sid, gameid):
         await asyncio.sleep(180)
         info = self.group_pending_quit.get(sid, {}).get(gameid)
@@ -1152,8 +1173,8 @@ class SteamStatusMonitorV2(Star):
                 logger.info(f"[退出逻辑] {name} prev_gameid={prev_gameid} current_gameid={current_gameid}")
                 zh_prev_game_name = await self.get_chinese_game_name(prev_gameid, prev.get('gameextrainfo') if prev else None) if prev_gameid else (prev.get('gameextrainfo') if prev else "未知游戏")
                 duration_min = 0
-                start_time = start_play_times[sid].get(prev_gameid, now)
-                if prev_gameid in start_play_times[sid]:
+                start_time = start_play_times.setdefault(sid, {}).get(prev_gameid, now)
+                if prev_gameid in start_play_times.get(sid, {}):
                     duration_min = (now - start_play_times[sid][prev_gameid]) / 60
                     # 新增：如果 duration_min 为 0，重试查询 2 次
                     if duration_min == 0:
@@ -1164,7 +1185,7 @@ class SteamStatusMonitorV2(Star):
                                 break
                             await asyncio.sleep(1)
                 self.achievement_monitor.clear_game_achievements(group_id, sid, prev_gameid)
-                pending_quit[sid][prev_gameid] = {
+                pending_quit.setdefault(sid, {})[prev_gameid] = {
                     "quit_time": now,
                     "name": name,
                     "game_name": zh_prev_game_name,
@@ -1195,13 +1216,13 @@ class SteamStatusMonitorV2(Star):
                 task = asyncio.create_task(self._delayed_quit_check(group_id, sid, prev_gameid))
                 self._pending_quit_tasks[sid][prev_gameid] = task
                 # 不移除 start_play_times[sid][prev_gameid]，保证时长累计
-                last_quit_times[sid][prev_gameid] = now
+                last_quit_times.setdefault(sid, {})[prev_gameid] = now
                 last_states[sid] = status
                 continue  # 防止重复推送
 
             # --- 开始游戏/继续游戏（仅当 gameid 变更时推送） ---
             if current_gameid not in [None, "", "0"] and current_gameid != prev_gameid:
-                quit_info = pending_quit[sid].get(current_gameid)
+                quit_info = pending_quit.setdefault(sid, {}).get(current_gameid)
                 # 检查是否为网络波动（3分钟内重启同一游戏）
                 if quit_info and now - quit_info["quit_time"] <= 180 and not quit_info.get("notified"):
                     # 取消延迟任务
@@ -1218,7 +1239,7 @@ class SteamStatusMonitorV2(Star):
                     last_states[sid] = status
                     continue  # 只推送网络波动提醒，跳过后续逻辑
                 # 修复：补充开始游戏推送逻辑
-                start_play_times[sid][current_gameid] = now
+                start_play_times.setdefault(sid, {})[current_gameid] = now
                 msg = f"🟢【{name}】开始游玩 {zh_game_name}"
                 notify_session = getattr(self, 'notify_sessions', {}).get(group_id, None)
                 if notify_session:
