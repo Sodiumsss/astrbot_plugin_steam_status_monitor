@@ -126,7 +126,11 @@ async def get_cover_path(data_dir, gameid, game_name, force_update=False, sgdb_a
                 return path
         except Exception as e:
             print(f"[get_cover_path] SGDB下载异常: {e} url={url}")
-    print(f"[get_cover_path] SGDB未收录或下载失败: {gameid} {game_name}")
+    # 新增：SGDB未收录或下载失败时，使用missingcover.jpg
+    print(f"[get_cover_path] SGDB未收录或下载失败: {gameid} {game_name}，使用默认封面")
+    missing_cover = os.path.join(os.path.dirname(__file__), "missingcover.jpg")
+    if os.path.exists(missing_cover):
+        return missing_cover
     return None
 
 def draw_duration_bar(draw, x, y, width, height, duration_h):
