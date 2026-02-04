@@ -4,10 +4,25 @@
     "type": "string",
     "hint": "请在 https://steamcommunity.com/dev/apikey 获取 "
   },
+  "steam_api_base": {
+    "description": "Steam Web API Base URL",
+    "type": "string",
+    "hint": "留空默认 https://api.steampowered.com"
+  },
+  "steam_store_base": {
+    "description": "Steam Store API Base URL",
+    "type": "string",
+    "hint": "留空默认 https://store.steampowered.com"
+  },
   "sgdb_api_key": {
     "description": "SteamGridDB API Key",
     "type": "string",
     "hint": "请在 https://www.steamgriddb.com/profile/preferences/api 获取"
+  },
+  "sgdb_api_base": {
+    "description": "SteamGridDB API Base URL",
+    "type": "string",
+    "hint": "留空默认 https://www.steamgriddb.com"
   },
   "fixed_poll_interval": {
     "description": "固定轮询间隔（秒）-修改后重启AstrBot生效",

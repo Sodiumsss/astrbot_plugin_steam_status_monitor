@@ -230,6 +230,11 @@ class SteamStatusMonitorV2(Star):
         except Exception as e:
             logger.warning(f"保存 push_groups.json 失败: {e}")
 
+    def _normalize_base_url(self, value, default):
+        if not value:
+            return default
+        return str(value).rstrip("/")
+
     def __init__(self, context: Context, config=None):
         # 插件运行状态标志，重启后自动丢失
         if hasattr(self, '_ssm_running') and self._ssm_running:
@@ -272,6 +277,14 @@ class SteamStatusMonitorV2(Star):
             logger.info(f"已自动迁移旧 steam_ids 配置到 group_steam_ids['default']")
         # 读取配置项，提供默认值
         self.API_KEY = self.config.get('steam_api_key', '')
+        self.STEAM_API_BASE = self._normalize_base_url(
+            self.config.get('steam_api_base', ''),
+            'https://api.steampowered.com'
+        )
+        self.STEAM_STORE_BASE = self._normalize_base_url(
+            self.config.get('steam_store_base', ''),
+            'https://store.steampowered.com'
+        )
         self.group_steam_ids = self.config.get('group_steam_ids', {})
         self.RETRY_TIMES = self.config.get('retry_times', 3)
         self.max_group_size = 20
@@ -294,7 +307,7 @@ class SteamStatusMonitorV2(Star):
         self._load_persistent_data()
         self._load_notify_session()
         # 成就监控
-        self.achievement_monitor = AchievementMonitor(self.data_dir)
+        self.achievement_monitor = AchievementMonitor(self.data_dir, steam_api_base=self.STEAM_API_BASE)
         self.max_achievement_notifications = self.config.get('max_achievement_notifications', 5)
         self.achievement_poll_tasks = {}  # {(group_id, sid, gameid): asyncio.Task}
         self.achievement_snapshots = {}   # {(group_id, sid, gameid): [成就列表]}
@@ -316,6 +329,10 @@ class SteamStatusMonitorV2(Star):
         asyncio.create_task(self.init_poll_time_once())
         # SGDB API Key 可在 https://www.steamgriddb.com/profile/preferences/api 获取
         self.SGDB_API_KEY = self.config.get('sgdb_api_key', '')
+        self.SGDB_API_BASE = self._normalize_base_url(
+            self.config.get('sgdb_api_base', ''),
+            'https://www.steamgriddb.com'
+        )
         self._load_push_groups()  # <--- 修复：确保push_groups属性初始化
 
     async def init_poll_time_once(self):
@@ -428,7 +445,7 @@ class SteamStatusMonitorV2(Star):
     async def fetch_player_status(self, steam_id, retry=None):
         '''拉取单个玩家的 Steam 状态，失败自动重试多次并指数退避'''
         url = (
-            "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
+            f"{self.STEAM_API_BASE}/ISteamUser/GetPlayerSummaries/v2/"
             f"?key={self.API_KEY}&steamids={steam_id}"
         )
         delay = 1
@@ -474,8 +491,8 @@ class SteamStatusMonitorV2(Star):
         if gid in self._game_name_cache:
             return self._game_name_cache[gid]
         # 优先查中文名（l=schinese），再查英文名（l=en）
-        url_zh = f"https://store.steampowered.com/api/appdetails?appids={gid}&l=schinese"
-        url_en = f"https://store.steampowered.com/api/appdetails?appids={gid}&l=en"
+        url_zh = f"{self.STEAM_STORE_BASE}/api/appdetails?appids={gid}&l=schinese"
+        url_en = f"{self.STEAM_STORE_BASE}/api/appdetails?appids={gid}&l=en"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 # 查中文名
@@ -512,8 +529,8 @@ class SteamStatusMonitorV2(Star):
                 return cached
             else:
                 return (cached, cached)
-        url_zh = f"https://store.steampowered.com/api/appdetails?appids={gid}&l=schinese"
-        url_en = f"https://store.steampowered.com/api/appdetails?appids={gid}&l=en"
+        url_zh = f"{self.STEAM_STORE_BASE}/api/appdetails?appids={gid}&l=schinese"
+        url_en = f"{self.STEAM_STORE_BASE}/api/appdetails?appids={gid}&l=en"
         name_zh = name_en = fallback_name or "未知游戏"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -559,7 +576,7 @@ class SteamStatusMonitorV2(Star):
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 for lang in lang_list:
-                    url = f"https://store.steampowered.com/api/appdetails?appids={gid}&l={lang}"
+                    url = f"{self.STEAM_STORE_BASE}/api/appdetails?appids={gid}&l={lang}"
                     resp = await client.get(url)
                     if resp.status_code != 200:
                         logger.warning(f"获取游戏封面API失败: HTTP {resp.status_code} (gameid={gid}, lang={lang})")
@@ -873,6 +890,19 @@ class SteamStatusMonitorV2(Star):
         self.config[key] = value
         # 同步到属性
         self.API_KEY = self.config.get('steam_api_key', '')
+        self.STEAM_API_BASE = self._normalize_base_url(
+            self.config.get('steam_api_base', ''),
+            'https://api.steampowered.com'
+        )
+        self.STEAM_STORE_BASE = self._normalize_base_url(
+            self.config.get('steam_store_base', ''),
+            'https://store.steampowered.com'
+        )
+        self.SGDB_API_KEY = self.config.get('sgdb_api_key', '')
+        self.SGDB_API_BASE = self._normalize_base_url(
+            self.config.get('sgdb_api_base', ''),
+            'https://www.steamgriddb.com'
+        )
         self.STEAM_IDS = self.config.get('steam_ids', [])
         self.RETRY_TIMES = self.config.get('retry_times', 3)
         self.GROUP_ID = self.config.get('notify_group_id', None)
@@ -1006,7 +1036,7 @@ class SteamStatusMonitorV2(Star):
             font_path = self.get_font_path('NotoSansHans-Regular.otf')
             online_count = await self.get_game_online_count(gameid)
             img_bytes = await render_game_start(
-                self.data_dir, steamid, player_name, avatar_url, gameid, zh_game_name, api_key=self.API_KEY, superpower=superpower, sgdb_api_key=self.SGDB_API_KEY, font_path=font_path, sgdb_game_name=en_game_name, online_count=online_count, appid=gameid
+                self.data_dir, steamid, player_name, avatar_url, gameid, zh_game_name, api_key=self.API_KEY, superpower=superpower, sgdb_api_key=self.SGDB_API_KEY, font_path=font_path, sgdb_game_name=en_game_name, online_count=online_count, appid=gameid, sgdb_api_base=self.SGDB_API_BASE, steam_api_base=self.STEAM_API_BASE
             )
             logger.info(f"[测试开始游戏渲染] render_game_start 返回类型: {type(img_bytes)} 长度: {len(img_bytes) if img_bytes else 'None'}")
             if img_bytes:
@@ -1069,7 +1099,7 @@ class SteamStatusMonitorV2(Star):
             font_path = self.get_font_path('NotoSansHans-Regular.otf')
             img_bytes = await render_game_end(
                 self.data_dir, steamid, player_name, avatar_url, gameid, zh_game_name,
-                end_time_str, tip_text, duration_h, sgdb_api_key=self.SGDB_API_KEY, font_path=font_path, sgdb_game_name=en_game_name, appid=gameid
+                end_time_str, tip_text, duration_h, sgdb_api_key=self.SGDB_API_KEY, font_path=font_path, sgdb_game_name=en_game_name, appid=gameid, sgdb_api_base=self.SGDB_API_BASE
             )
             msg = f"👋 {player_name} 不玩 {zh_game_name} 了\n游玩时间 {duration_h:.1f}小时"
             import tempfile
@@ -1191,7 +1221,7 @@ class SteamStatusMonitorV2(Star):
                     font_path = self.get_font_path('NotoSansHans-Regular.otf')
                     img_bytes = await render_game_end(
                         self.data_dir, sid, info["name"], avatar_url, gameid, zh_game_name,
-                        end_time_str, tip_text, duration_h, sgdb_api_key=self.SGDB_API_KEY, font_path=font_path, sgdb_game_name=en_game_name, appid=gameid
+                        end_time_str, tip_text, duration_h, sgdb_api_key=self.SGDB_API_KEY, font_path=font_path, sgdb_game_name=en_game_name, appid=gameid, sgdb_api_base=self.SGDB_API_BASE
                     )
                     import tempfile
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
@@ -1332,7 +1362,7 @@ class SteamStatusMonitorV2(Star):
                     img_bytes = await render_game_start(
                         self.data_dir, sid, name, avatar_url, current_gameid, zh_game_name,
                         api_key=self.API_KEY, superpower=superpower, sgdb_api_key=self.SGDB_API_KEY,
-                        font_path=font_path, sgdb_game_name=en_game_name, online_count=online_count, appid=gameid
+                        font_path=font_path, sgdb_game_name=en_game_name, online_count=online_count, appid=gameid, sgdb_api_base=self.SGDB_API_BASE, steam_api_base=self.STEAM_API_BASE
                     )
                     import tempfile
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
@@ -1482,7 +1512,7 @@ class SteamStatusMonitorV2(Star):
                                 font_path = self.get_font_path('NotoSansHans-Regular.otf')
                                 img_bytes = await render_game_end(
                                     self.data_dir, sid, info["name"], avatar_url, gameid, zh_game_name,
-                                    end_time_str, tip_text, duration_min/60 if duration_min > 0 else 0, sgdb_api_key=self.SGDB_API_KEY, font_path=font_path, sgdb_game_name=en_game_name, appid=gameid
+                                    end_time_str, tip_text, duration_min/60 if duration_min > 0 else 0, sgdb_api_key=self.SGDB_API_KEY, font_path=font_path, sgdb_game_name=en_game_name, appid=gameid, sgdb_api_base=self.SGDB_API_BASE
                                 )
                                 import tempfile
                                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
@@ -1509,7 +1539,7 @@ class SteamStatusMonitorV2(Star):
         '''通过 Steam Web API 获取当前游戏在线人数'''
         if not gameid:
             return None
-        url = f"https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid={gameid}"
+        url = f"{self.STEAM_API_BASE}/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid={gameid}"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(url)
