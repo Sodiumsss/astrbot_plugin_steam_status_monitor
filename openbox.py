@@ -49,7 +49,8 @@ async def handle_openbox(self, event, steamid: str):
         2: "所有人可评论"
     }
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        proxy = getattr(self, 'proxy', None)
+        async with httpx.AsyncClient(timeout=15, proxy=proxy) as client:
             resp = await client.get(url)
             if resp.status_code != 200:
                 yield event.plain_result(f"API请求失败: HTTP {resp.status_code}")

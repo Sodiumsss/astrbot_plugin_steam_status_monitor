@@ -20,7 +20,7 @@ CARD_GAP = 12
 FONT_PATH_BOLD = "msyhbd.ttc"
 FONT_PATH = "msyh.ttc"
 
-async def fetch_avatar(avatar_url, data_dir, sid):
+async def fetch_avatar(avatar_url, data_dir, sid, proxy=None):
     if not avatar_url:
         return None
     avatar_dir = os.path.join(data_dir, "avatars")
@@ -32,7 +32,7 @@ async def fetch_avatar(avatar_url, data_dir, sid):
         except Exception:
             pass
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, proxy=proxy) as client:
             resp = await client.get(avatar_url)
             if resp.status_code == 200:
                 with open(path, "wb") as f:
@@ -100,7 +100,7 @@ def get_font_path(font_name):
         return font_path2
     return font_name
 
-async def render_steam_list_image(data_dir, user_list, font_path=None):
+async def render_steam_list_image(data_dir, user_list, font_path=None, proxy=None):
     # 字体
     if font_path is None:
         font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NotoSansHans-Regular.otf')
@@ -137,7 +137,7 @@ async def render_steam_list_image(data_dir, user_list, font_path=None):
     title_bbox = draw.textbbox((0,0), title, font=font_title)
     draw.text(((width-title_bbox[2]+title_bbox[0])//2, 12), title, font=font_title, fill=(255,255,255))
     # 卡片
-    tasks = [fetch_avatar(u['avatar_url'], data_dir, u['sid']) for u in user_list]
+    tasks = [fetch_avatar(u['avatar_url'], data_dir, u['sid'], proxy=proxy) for u in user_list]
     avatars = await asyncio.gather(*tasks)
     for idx, user in enumerate(user_list):
         top = CARD_MARGIN + idx * (CARD_HEIGHT + CARD_GAP) + 50

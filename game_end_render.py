@@ -18,7 +18,7 @@ STAR_BG_PATH = os.path.join(os.path.dirname(__file__), "随机散布的小星星
 
 SGDB_API_KEY = "00c703ea9a664ce236526aca0faeaaf4"
 
-async def get_sgdb_vertical_cover(game_name, sgdb_api_key=None, sgdb_game_name=None, appid=None, sgdb_api_base=None):
+async def get_sgdb_vertical_cover(game_name, sgdb_api_key=None, sgdb_game_name=None, appid=None, sgdb_api_base=None, proxy=None):
     import httpx
     if not sgdb_api_key:
         return None
@@ -26,7 +26,7 @@ async def get_sgdb_vertical_cover(game_name, sgdb_api_key=None, sgdb_game_name=N
     sgdb_api_base = (sgdb_api_base or "https://www.steamgriddb.com").rstrip("/")
     search_name = sgdb_game_name if sgdb_game_name else game_name
     search_url = f"{sgdb_api_base}/api/v2/search/autocomplete/{search_name}"
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, proxy=proxy) as client:
         try:
             resp = await client.get(search_url, headers=headers)
             data = resp.json()
@@ -67,7 +67,7 @@ async def get_sgdb_vertical_cover(game_name, sgdb_api_key=None, sgdb_game_name=N
             print(f"[get_sgdb_vertical_cover] SGDB API异常: {e}")
             return None
 
-def get_avatar_path(data_dir, steamid, url, force_update=False):
+def get_avatar_path(data_dir, steamid, url, force_update=False, proxy=None):
     avatar_dir = os.path.join(data_dir, "avatars")
     os.makedirs(avatar_dir, exist_ok=True)
     path = os.path.join(avatar_dir, f"{steamid}.jpg")
@@ -79,7 +79,7 @@ def get_avatar_path(data_dir, steamid, url, force_update=False):
             return path
     try:
         import httpx
-        resp = httpx.get(url, timeout=10)
+        resp = httpx.get(url, timeout=10, proxy=proxy)
         if resp.status_code == 200:
             with open(path, "wb") as f:
                 f.write(resp.content)
@@ -107,7 +107,7 @@ def render_gradient_bg(img_w, img_h, color_top, color_bottom):
     return base
 
 # get_cover_path 改为 async def 并 await get_sgdb_vertical_cover
-async def get_cover_path(data_dir, gameid, game_name, force_update=False, sgdb_api_key=None, sgdb_game_name=None, appid=None, sgdb_api_base=None):
+async def get_cover_path(data_dir, gameid, game_name, force_update=False, sgdb_api_key=None, sgdb_game_name=None, appid=None, sgdb_api_base=None, proxy=None):
     from PIL import Image as PILImage
     import httpx
     cover_dir = os.path.join(data_dir, "covers_v")
@@ -117,10 +117,10 @@ async def get_cover_path(data_dir, gameid, game_name, force_update=False, sgdb_a
     if os.path.exists(path):
         return path
     # 只尝试 SGDB 竖版封面
-    url = await get_sgdb_vertical_cover(game_name, sgdb_api_key, sgdb_game_name=sgdb_game_name, appid=appid, sgdb_api_base=sgdb_api_base)
+    url = await get_sgdb_vertical_cover(game_name, sgdb_api_key, sgdb_game_name=sgdb_game_name, appid=appid, sgdb_api_base=sgdb_api_base, proxy=proxy)
     if url:
         try:
-            resp = httpx.get(url, timeout=10)
+            resp = httpx.get(url, timeout=10, proxy=proxy)
             if resp.status_code == 200:
                 with open(path, "wb") as f:
                     f.write(resp.content)
@@ -373,9 +373,9 @@ def render_game_end_image(player_name, avatar_path, game_name, cover_path, end_t
     return img.convert("RGB")
 
 # render_game_end 里 await get_cover_path
-async def render_game_end(data_dir, steamid, player_name, avatar_url, gameid, game_name, end_time_str, tip_text, duration_h, sgdb_api_key=None, font_path=None, sgdb_game_name=None, appid=None, sgdb_api_base=None):
-    avatar_path = get_avatar_path(data_dir, steamid, avatar_url)
-    cover_path = await get_cover_path(data_dir, gameid, game_name, sgdb_api_key=sgdb_api_key, sgdb_game_name=sgdb_game_name, appid=appid, sgdb_api_base=sgdb_api_base)
+async def render_game_end(data_dir, steamid, player_name, avatar_url, gameid, game_name, end_time_str, tip_text, duration_h, sgdb_api_key=None, font_path=None, sgdb_game_name=None, appid=None, sgdb_api_base=None, proxy=None):
+    avatar_path = get_avatar_path(data_dir, steamid, avatar_url, proxy=proxy)
+    cover_path = await get_cover_path(data_dir, gameid, game_name, sgdb_api_key=sgdb_api_key, sgdb_game_name=sgdb_game_name, appid=appid, sgdb_api_base=sgdb_api_base, proxy=proxy)
     img = render_game_end_image(player_name, avatar_path, game_name, cover_path, end_time_str, tip_text, duration_h, font_path=font_path)
     buf = io.BytesIO()
     img.save(buf, format="PNG")

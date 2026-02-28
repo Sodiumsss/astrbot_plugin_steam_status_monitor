@@ -287,6 +287,9 @@ class SteamStatusMonitorV2(Star):
         )
         self.group_steam_ids = self.config.get('group_steam_ids', {})
         self.RETRY_TIMES = self.config.get('retry_times', 3)
+        self.ENABLE_PROXY = self.config.get('enable_proxy', False)
+        self.PROXY_URL = self.config.get('proxy_url', '')
+        self.proxy = self.PROXY_URL if self.ENABLE_PROXY and self.PROXY_URL else None
         self.max_group_size = 20
         self.GROUP_ID = None  # 当前操作群号，指令时动态赋值
         self.fixed_poll_interval = self.config.get('fixed_poll_interval', 0)  # 新增：固定轮询间隔，0为智能轮询
@@ -307,7 +310,7 @@ class SteamStatusMonitorV2(Star):
         self._load_persistent_data()
         self._load_notify_session()
         # 成就监控
-        self.achievement_monitor = AchievementMonitor(self.data_dir, steam_api_base=self.STEAM_API_BASE)
+        self.achievement_monitor = AchievementMonitor(self.data_dir, steam_api_base=self.STEAM_API_BASE, proxy=self.proxy)
         self.max_achievement_notifications = self.config.get('max_achievement_notifications', 5)
         self.achievement_poll_tasks = {}  # {(group_id, sid, gameid): asyncio.Task}
         self.achievement_snapshots = {}   # {(group_id, sid, gameid): [成就列表]}
@@ -391,7 +394,8 @@ class SteamStatusMonitorV2(Star):
                     all_logs = []
                     for group_id, logstr in self._last_round_logs:
                         all_logs.append(f"群{group_id}：\n" + logstr)
-                    logger.info("====== Steam状态监控轮询日志 ======\n" + "\n".join(all_logs) + "\n=====================================================")
+                    proxy_info = f" (使用代理 {self.proxy})" if getattr(self, 'proxy', None) else ""
+                    logger.info(f"====== Steam状态监控轮询日志{proxy_info} ======\n" + "\n".join(all_logs) + "\n=====================================================")
                 else:
                     logger.info("周期轮询成功")
                 self._last_round_logs.clear()
@@ -451,7 +455,7 @@ class SteamStatusMonitorV2(Star):
         delay = 1
         retry = retry if retry is not None else self.RETRY_TIMES
         for attempt in range(retry):
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(timeout=15, proxy=self.proxy) as client:
                 try:
                     resp = await client.get(url)
                     if resp.status_code != 200:
@@ -494,7 +498,7 @@ class SteamStatusMonitorV2(Star):
         url_zh = f"{self.STEAM_STORE_BASE}/api/appdetails?appids={gid}&l=schinese"
         url_en = f"{self.STEAM_STORE_BASE}/api/appdetails?appids={gid}&l=en"
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, proxy=self.proxy) as client:
                 # 查中文名
                 resp_zh = await client.get(url_zh)
                 data_zh = resp_zh.json()
@@ -533,7 +537,7 @@ class SteamStatusMonitorV2(Star):
         url_en = f"{self.STEAM_STORE_BASE}/api/appdetails?appids={gid}&l=en"
         name_zh = name_en = fallback_name or "未知游戏"
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, proxy=self.proxy) as client:
                 resp_zh = await client.get(url_zh)
                 data_zh = resp_zh.json()
                 info_zh = data_zh.get(gid, {}).get("data", {})
@@ -574,7 +578,7 @@ class SteamStatusMonitorV2(Star):
         # 多区域尝试
         lang_list = ["schinese", "japanese", "en"]
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, proxy=self.proxy) as client:
                 for lang in lang_list:
                     url = f"{self.STEAM_STORE_BASE}/api/appdetails?appids={gid}&l={lang}"
                     resp = await client.get(url)
@@ -839,7 +843,7 @@ class SteamStatusMonitorV2(Star):
         font_path = self.get_font_path('NotoSansHans-Regular.otf')
         logger.info(f"[Font] steam_list 渲染传入字体路径: {font_path}")
         # 修改：显式传递 group_id
-        async for result in handle_steam_list(self, event, group_id=group_id, font_path=font_path):
+        async for result in handle_steam_list(self, event, group_id=group_id, font_path=font_path, proxy=self.proxy):
             yield result
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -905,6 +909,9 @@ class SteamStatusMonitorV2(Star):
         )
         self.STEAM_IDS = self.config.get('steam_ids', [])
         self.RETRY_TIMES = self.config.get('retry_times', 3)
+        self.ENABLE_PROXY = self.config.get('enable_proxy', False)
+        self.PROXY_URL = self.config.get('proxy_url', '')
+        self.proxy = self.PROXY_URL if self.ENABLE_PROXY and self.PROXY_URL else None
         self.GROUP_ID = self.config.get('notify_group_id', None)
         self.fixed_poll_interval = self.config.get('fixed_poll_interval', 0)
         # 重新解析智能轮询间隔
@@ -1221,7 +1228,7 @@ class SteamStatusMonitorV2(Star):
                     font_path = self.get_font_path('NotoSansHans-Regular.otf')
                     img_bytes = await render_game_end(
                         self.data_dir, sid, info["name"], avatar_url, gameid, zh_game_name,
-                        end_time_str, tip_text, duration_h, sgdb_api_key=self.SGDB_API_KEY, font_path=font_path, sgdb_game_name=en_game_name, appid=gameid, sgdb_api_base=self.SGDB_API_BASE
+                        end_time_str, tip_text, duration_h, sgdb_api_key=self.SGDB_API_KEY, font_path=font_path, sgdb_game_name=en_game_name, appid=gameid, sgdb_api_base=self.SGDB_API_BASE, proxy=self.proxy
                     )
                     import tempfile
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
@@ -1362,7 +1369,7 @@ class SteamStatusMonitorV2(Star):
                     img_bytes = await render_game_start(
                         self.data_dir, sid, name, avatar_url, current_gameid, zh_game_name,
                         api_key=self.API_KEY, superpower=superpower, sgdb_api_key=self.SGDB_API_KEY,
-                        font_path=font_path, sgdb_game_name=en_game_name, online_count=online_count, appid=gameid, sgdb_api_base=self.SGDB_API_BASE, steam_api_base=self.STEAM_API_BASE
+                        font_path=font_path, sgdb_game_name=en_game_name, online_count=online_count, appid=gameid, sgdb_api_base=self.SGDB_API_BASE, steam_api_base=self.STEAM_API_BASE, proxy=self.proxy
                     )
                     import tempfile
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
@@ -1541,7 +1548,7 @@ class SteamStatusMonitorV2(Star):
             return None
         url = f"{self.STEAM_API_BASE}/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid={gameid}"
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, proxy=self.proxy) as client:
                 resp = await client.get(url)
                 if resp.status_code == 200:
                     data = resp.json()

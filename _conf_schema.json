@@ -47,5 +47,17 @@
     "type": "bool",
     "hint": "控制台输出完整轮询日志（修改后重启AstrBot生效）",
     "default": true
+  },
+  "enable_proxy": {
+    "description": "启用网络代理",
+    "type": "bool",
+    "hint": "开启后，插件所有网络请求将走设定的代理代理。如：http, https, socks5",
+    "default": false
+  },
+  "proxy_url": {
+    "description": "代理链接",
+    "type": "string",
+    "hint": "填写代理IP和端口，如：http://127.0.0.1:7890 或 socks5://127.0.0.1:7890",
+    "default": ""
   }
 }
